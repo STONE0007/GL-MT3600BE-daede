@@ -34,7 +34,8 @@ jobs:
 
       - name: 拉取源码与配置 Feeds
         run: |
-          git clone --depth 1 https://github.com/openwrt/openwrt.git openwrt
+          # 替换为 GL-MT3600BE 专属定制源码仓库
+          git clone --depth 1 https://github.com/KaguyaRing/openwrt-custom-gl-mt3600be.git openwrt
           cd openwrt
           
           # 1. 注入 daede 与 Aurora 主题
