@@ -1,0 +1,124 @@
+name: Build GL-MT3600BE daede
+
+on:
+  workflow_dispatch:
+    inputs:
+      ssh_menuconfig:
+        description: '是否开启交互配置菜单 (tmate SSH)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: 检出当前仓库
+        uses: actions/checkout@v4
+
+      - name: 清理 Runner 磁盘空间
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
+          sudo docker image prune --all --force
+          sudo apt-get -y purge azure-cli ghc* zulu* llvm* firefox google-chrome* dotnet* powershell openjdk*
+          sudo apt-get autoremove --purge -y
+          sudo apt-get clean
+
+      - name: 安装 OpenWrt 与 eBPF 编译依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget \
+            bpfcc-tools libbpf-dev libelf-dev
+
+      - name: 拉取源码与配置 Feeds
+        run: |
+          git clone --depth 1 https://github.com/openwrt/openwrt.git openwrt
+          cd openwrt
+          
+          # 1. 注入 daede 与 Aurora 主题
+          git clone --depth 1 https://github.com/kenzok8/openwrt-daede.git package/openwrt-daede
+          git clone -b v0.10.0 --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
+          git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git package/luci-app-aurora-config
+          
+          # 2. 规避旧版仓库冲突并更新 feeds
+          sed -i '/daed_repo/d' feeds.conf.default 2>/dev/null || true
+          ./scripts/feeds uninstall luci-app-daede daed dae 2>/dev/null || true
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a -f
+
+          # 3. 升级 Go 编译器至 1.26+ 分支
+          rm -rf feeds/packages/lang/golang
+          git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
+          ./scripts/feeds install -f -p packages golang
+
+      - name: 注入满血 eBPF 与 BBR 内核参数
+        run: |
+          cd openwrt
+          KCONFIGS=$(ls target/linux/mediatek/filogic/config-* 2>/dev/null)
+          for KCONFIG in $KCONFIGS; do
+            for cfg in "CONFIG_NET_ACT_BPF" "CONFIG_NET_CLS_BPF" "CONFIG_NET_CLS_ACT" \
+                        "CONFIG_NETKIT" "CONFIG_DEBUG_INFO_BTF" "CONFIG_TCP_CONG_BBR" "CONFIG_NET_SCH_FQ"; do
+              sed -i "s/# ${cfg} is not set//g" "$KCONFIG"
+              grep -qF "${cfg}=y" "$KCONFIG" || echo "${cfg}=y" >> "$KCONFIG"
+            done
+          done
+
+      - name: 载入配置文件与预设 Files
+        run: |
+          if [ -d "files" ]; then
+            cp -r files/ openwrt/files/
+          fi
+          cd openwrt
+          cat << 'EOF' > .config
+          CONFIG_TARGET_mediatek=y
+          CONFIG_TARGET_mediatek_filogic=y
+          CONFIG_TARGET_mediatek_filogic_DEVICE_glinet_gl-mt3600be=y
+          CONFIG_PACKAGE_luci-app-daede=y
+          CONFIG_PACKAGE_dae=y
+          CONFIG_PACKAGE_daed=y
+          CONFIG_PACKAGE_vmlinux-btf=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_zoneinfo-asia=y
+          CONFIG_PACKAGE_bpftool-minimal=y
+          CONFIG_PACKAGE_kmod-button-hotplug=y
+          CONFIG_PACKAGE_luci-theme-aurora=y
+          CONFIG_PACKAGE_luci-app-aurora-config=y
+          EOF
+          make defconfig
+
+      - name: SSH 交互式配置终端 (按需开启)
+        if: ${{ inputs.ssh_menuconfig }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          detached: false
+
+      - name: 预下载源码依赖
+        run: |
+          cd openwrt
+          make download -j8
+
+      - name: 全速冲刺多线程编译
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
+
+      - name: 提取并重命名固件
+        id: organize
+        run: |
+          cd openwrt/bin/targets/mediatek/filogic/
+          FIRMWARE=$(ls *gl-mt3600be-squashfs-sysupgrade.bin | head -n 1)
+          export TZ='Asia/Shanghai'
+          [ $(date +%H) -lt 12 ] && AP="上午" || AP="下午"
+          TIME_TAG="$(date +%Y%m%d)-${AP}$(date +%I%M)"
+          NEW_NAME="daede-${TIME_TAG}.bin"
+          mv "$FIRMWARE" "$NEW_NAME"
+          echo "firmware_path=openwrt/bin/targets/mediatek/filogic/${NEW_NAME}" >> $GITHUB_OUTPUT
+          echo "firmware_name=${NEW_NAME}" >> $GITHUB_OUTPUT
+
+      - name: 上传固件至 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.organize.outputs.firmware_name }}
+          path: ${{ steps.organize.outputs.firmware_path }}
