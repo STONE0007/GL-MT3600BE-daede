@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/sh
 uci set system.@system[0].timezone='CST-8'
-uci set system.@system[0].zonename='Asia/Hong_Kong'
+uci set system.@system[0].zonename='Asia/Shanghai'
 uci set firewall.@defaults[0].flow_offloading='1'
 uci set firewall.@defaults[0].flow_offloading_hw='1'
 uci commit system
