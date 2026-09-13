@@ -29,6 +29,8 @@ jobs:
             libssl-dev libtool lrzsz genisoimage msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
             python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
             uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev clang llvm lld bpfcc-tools libbpf-dev
+            sudo ln -sf /usr/bin/clang /clang
+            sudo ln -sf /usr/bin/llvm-dis /llvm-dis
 
       - name: 拉取源码与配置 Feeds
         run: |
@@ -106,7 +108,7 @@ jobs:
           cd openwrt
           
           # 核心双保险：彻底抹除 include/bpf.mk 内部的 /invalid 回退，直接使用宿主机 Clang
-          sed -i 's|LLVM_PATH:=/invalid|LLVM_PATH:=|g' include/bpf.mk 2>/dev/null || true
+          sed -i 's|LLVM_PATH:=.*|LLVM_PATH:=/usr/bin|g' include/bpf.mk 2>/dev/null || true
           
           # 执行白名单过滤保护
           PROTECT_LIST="luci-app-daede|luci-app-firewall|luci-app-package-manager|luci-app-opkg|luci-app-aurora-config|zoneinfo-asia"
