@@ -22,44 +22,63 @@ jobs:
       - name: 安装 OpenWrt 与 eBPF 编译依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm flex bison g++ gawk gcc-multilib g++-multilib \
-            gettext git libncurses-dev libssl-dev python3-setuptools rsync unzip zlib1g-dev file wget \
-            bpfcc-tools libbpf-dev libelf-dev
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+            git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+            libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool lrzsz genisoimage msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
+            python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev clang llvm bpfcc-tools libbpf-dev
 
       - name: 拉取源码与配置 Feeds
         run: |
           git clone --depth 1 https://github.com/KaguyaRing/openwrt-custom-gl-mt3600be.git openwrt
           cd openwrt
           
-          # 1. 注入 daede 与 Aurora 主题
+          # 彻底剔除旧版 daed_repo，注入全新独立包与 Aurora 主题
+          sed -i '/daed_repo/d' feeds.conf.default 2>/dev/null || true
           git clone --depth 1 https://github.com/kenzok8/openwrt-daede.git package/openwrt-daede
+          rm -rf package/luci-theme-aurora package/luci-app-aurora-config
           git clone -b v0.10.0 --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
           git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git package/luci-app-aurora-config
           
-          # 2. 规避旧版仓库冲突并更新 feeds
-          sed -i '/daed_repo/d' feeds.conf.default 2>/dev/null || true
+          # 卸载冲突包并更新安装 Feeds
           ./scripts/feeds uninstall luci-app-daede daed dae 2>/dev/null || true
           ./scripts/feeds update -a
           ./scripts/feeds install -a -f
 
-          # 3. 升级 Go 编译器至 1.26+ 分支
+          # 替换 Go 编译器为 1.26+ 分支
           rm -rf feeds/packages/lang/golang
           git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
           ./scripts/feeds install -f -p packages golang
 
-      - name: 自动注入满血 eBPF 与 BBR 内核参数
+      - name: 注入第六步满血 eBPF 与底层内核优化
         run: |
           cd openwrt
           KCONFIGS=$(ls target/linux/mediatek/filogic/config-* 2>/dev/null)
           for KCONFIG in $KCONFIGS; do
-            for cfg in "CONFIG_NET_ACT_BPF" "CONFIG_NET_CLS_BPF" "CONFIG_NET_CLS_ACT" \
-                        "CONFIG_NETKIT" "CONFIG_DEBUG_INFO_BTF" "CONFIG_TCP_CONG_BBR" "CONFIG_NET_SCH_FQ"; do
+            # 1. 切换抢占模型为低延迟桌面级（Preemptible Kernel）
+            sed -i 's/CONFIG_PREEMPT_NONE=y/# CONFIG_PREEMPT_NONE is not set/g' "$KCONFIG"
+            sed -i 's/CONFIG_PREEMPT_VOLUNTARY=y/# CONFIG_PREEMPT_VOLUNTARY is not set/g' "$KCONFIG"
+            grep -qF "CONFIG_PREEMPT=y" "$KCONFIG" || echo "CONFIG_PREEMPT=y" >> "$KCONFIG"
+            grep -qF "CONFIG_PREEMPTION=y" "$KCONFIG" || echo "CONFIG_PREEMPTION=y" >> "$KCONFIG"
+
+            # 2. 注入 XDP、Netkit、BBR+FQ、cgroup eBPF、套接字监控等内核底层支持
+            for cfg in \
+              "CONFIG_XDP_SOCKETS" \
+              "CONFIG_TCP_CONG_BBR" "CONFIG_NET_SCH_FQ" \
+              "CONFIG_IKCONFIG" "CONFIG_IKCONFIG_PROC" \
+              "CONFIG_CGROUPS" "CONFIG_CGROUP_CPUACCT" "CONFIG_CGROUP_BPF" "CONFIG_SOCK_CGROUP_DATA" \
+              "CONFIG_INET_DIAG" "CONFIG_INET_UDP_DIAG" "CONFIG_INET_DIAG_DESTROY" \
+              "CONFIG_NETKIT" "CONFIG_DEBUG_INFO_BTF" \
+              "CONFIG_NET_ACT_BPF" "CONFIG_NET_CLS_BPF" "CONFIG_NET_CLS_ACT" \
+              "CONFIG_NF_CONNTRACK_MARK" "CONFIG_NFT_TPROXY" "CONFIG_NFT_SOCKET" "CONFIG_NFT_FIB"; do
               sed -i "s/# ${cfg} is not set//g" "$KCONFIG"
               grep -qF "${cfg}=y" "$KCONFIG" || echo "${cfg}=y" >> "$KCONFIG"
             done
           done
 
-      - name: 载入配置文件与预设 Files
+      - name: 载入预埋 Files 与核心配置
         run: |
           if [ -d "files" ]; then
             cp -r files/ openwrt/files/
@@ -68,6 +87,16 @@ jobs:
             cp .config openwrt/.config
           fi
           cd openwrt
+          
+          # 执行白名单过滤保护
+          PROTECT_LIST="luci-app-daede|luci-app-firewall|luci-app-package-manager|luci-app-opkg|luci-app-aurora-config|zoneinfo-asia"
+          for pkg in $(grep "=y" .config | grep "^CONFIG_PACKAGE_luci-app-" | grep -v -E "$PROTECT_LIST" | cut -d'=' -f1); do
+              sed -i "/${pkg}/d" .config
+              echo "# ${pkg} is not set" >> .config
+          done
+          sed -i '/CONFIG_PACKAGE_ruby/d' .config
+          echo "# CONFIG_PACKAGE_ruby is not set" >> .config
+
           make defconfig
 
       - name: 预下载源码依赖
@@ -80,7 +109,7 @@ jobs:
           cd openwrt
           make -j$(nproc) || make -j1 V=s
 
-      - name: 提取并重命名固件
+      - name: 提取固件并按 12 小时制重命名归档
         id: organize
         run: |
           cd openwrt/bin/targets/mediatek/filogic/
