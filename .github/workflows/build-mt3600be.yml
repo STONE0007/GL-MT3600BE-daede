@@ -3,15 +3,15 @@ name: Build GL-MT3600BE daede
 on:
   workflow_dispatch:
     inputs:
-      ssh_menuconfig:
-        description: '是否开启交互配置菜单 (tmate SSH)'
+      ssh:
+        description: 'SSH connection to Actions (进入配置菜单)'
         required: false
         type: boolean
         default: false
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: 检出当前仓库
@@ -25,31 +25,33 @@ jobs:
           sudo apt-get autoremove --purge -y
           sudo apt-get clean
 
-      - name: 安装 OpenWrt 与 eBPF 编译依赖
+      - name: 安装编译依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm flex bison g++ gawk gcc-multilib g++-multilib \
-            gettext git libncurses-dev libssl-dev python3-setuptools rsync unzip zlib1g-dev file wget \
-            bpfcc-tools libbpf-dev libelf-dev
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+            git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev \
+            libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool lrzsz genisoimage msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
+            python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo \
+            uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev clang llvm libbpf-dev
 
       - name: 拉取源码与配置 Feeds
         run: |
-          # 替换为 GL-MT3600BE 专属定制源码仓库
           git clone --depth 1 https://github.com/KaguyaRing/openwrt-custom-gl-mt3600be.git openwrt
           cd openwrt
           
-          # 1. 注入 daede 与 Aurora 主题
+          # 注入 daede 与 Aurora 主题
           git clone --depth 1 https://github.com/kenzok8/openwrt-daede.git package/openwrt-daede
           git clone -b v0.10.0 --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
           git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git package/luci-app-aurora-config
           
-          # 2. 规避旧版仓库冲突并更新 feeds
           sed -i '/daed_repo/d' feeds.conf.default 2>/dev/null || true
           ./scripts/feeds uninstall luci-app-daede daed dae 2>/dev/null || true
           ./scripts/feeds update -a
           ./scripts/feeds install -a -f
 
-          # 3. 升级 Go 编译器至 1.26+ 分支
+          # 替换 Go 编译器为 1.26+ 分支
           rm -rf feeds/packages/lang/golang
           git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
           ./scripts/feeds install -f -p packages golang
@@ -89,11 +91,9 @@ jobs:
           EOF
           make defconfig
 
-      - name: SSH 交互式配置终端 (按需开启)
-        if: ${{ inputs.ssh_menuconfig }}
-        uses: mxschmitt/action-tmate@v3
-        with:
-          detached: false
+      - name: SSH 连接到 Actions (与 weekdaycare 一致)
+        uses: P3TERX/ssh2actions@main
+        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
 
       - name: 预下载源码依赖
         run: |
