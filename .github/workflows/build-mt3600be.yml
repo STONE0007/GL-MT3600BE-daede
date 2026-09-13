@@ -63,10 +63,27 @@ jobs:
             grep -qF "CONFIG_PREEMPT=y" "$KCONFIG" || echo "CONFIG_PREEMPT=y" >> "$KCONFIG"
             grep -qF "CONFIG_PREEMPTION=y" "$KCONFIG" || echo "CONFIG_PREEMPTION=y" >> "$KCONFIG"
 
-            # 2. 注入 XDP、Netkit、BBR+FQ、cgroup eBPF、套接字监控等内核底层支持
+            # 2. 彻底解决 TCP 拥塞控制 Choice 弹窗 (锁定 BBR 为默认)
+            sed -i 's/CONFIG_DEFAULT_CUBIC=y/# CONFIG_DEFAULT_CUBIC is not set/g' "$KCONFIG"
+            sed -i 's/CONFIG_DEFAULT_TCP_CONG="cubic"/CONFIG_DEFAULT_TCP_CONG="bbr"/g' "$KCONFIG"
+            for cfg in "CONFIG_TCP_CONG_ADVANCED=y" "CONFIG_TCP_CONG_BBR=y" "CONFIG_DEFAULT_BBR=y" 'CONFIG_DEFAULT_TCP_CONG="bbr"'; do
+              sed -i "s/# ${cfg} is not set//g" "$KCONFIG"
+              grep -qF "${cfg}" "$KCONFIG" || echo "${cfg}" >> "$KCONFIG"
+            done
+
+            # 3. 彻底解决队列调度 Choice 弹窗 (锁定 FQ 为默认)
+            sed -i 's/CONFIG_DEFAULT_FQ_CODEL=y/# CONFIG_DEFAULT_FQ_CODEL is not set/g' "$KCONFIG"
+            sed -i 's/CONFIG_DEFAULT_PFIFO_FAST=y/# CONFIG_DEFAULT_PFIFO_FAST is not set/g' "$KCONFIG"
+            sed -i 's/CONFIG_DEFAULT_NET_SCH="fq_codel"/CONFIG_DEFAULT_NET_SCH="fq"/g' "$KCONFIG"
+            sed -i 's/CONFIG_DEFAULT_NET_SCH="pfifo_fast"/CONFIG_DEFAULT_NET_SCH="fq"/g' "$KCONFIG"
+            for cfg in "CONFIG_NET_SCH_FQ=y" "CONFIG_NET_SCH_DEFAULT=y" "CONFIG_DEFAULT_FQ=y" 'CONFIG_DEFAULT_NET_SCH="fq"'; do
+              sed -i "s/# ${cfg} is not set//g" "$KCONFIG"
+              grep -qF "${cfg}" "$KCONFIG" || echo "${cfg}" >> "$KCONFIG"
+            done
+
+            # 4. 注入 XDP、Netkit、cgroup eBPF、套接字监控等底层支持
             for cfg in \
               "CONFIG_XDP_SOCKETS" \
-              "CONFIG_TCP_CONG_BBR" "CONFIG_NET_SCH_FQ" \
               "CONFIG_IKCONFIG" "CONFIG_IKCONFIG_PROC" \
               "CONFIG_CGROUPS" "CONFIG_CGROUP_CPUACCT" "CONFIG_CGROUP_BPF" "CONFIG_SOCK_CGROUP_DATA" \
               "CONFIG_INET_DIAG" "CONFIG_INET_UDP_DIAG" "CONFIG_INET_DIAG_DESTROY" \
