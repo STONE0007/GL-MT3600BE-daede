@@ -5,22 +5,22 @@
 [![Telegram Group](https://img.shields.io/badge/Telegram-交流讨论群-2CA5E0?style=flat-square&logo=telegram&logoColor=white)](https://t.me/你的TG群组链接)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.flat-square)](LICENSE)
 
-专为 **GL.iNet GL-MT3600BE**（MediaTek Filogic 820/880 平台）深度打造的电竞级优化 OpenWrt 固件[cite: 1]。全面解锁内核级 Netkit 虚拟网卡通道与原生 eBPF 性能，集成 `dae` 与 `daed` 双完全体代理内核，并通过多层白名单机制剔除冗余运行时，实现仅约 **46MB** 的极致轻量体积与低抖动游戏转发[cite: 1, 5]。
+专为 **GL.iNet GL-MT3600BE**（MediaTek Filogic 820/880 平台）深度打造的电竞级优化 OpenWrt 固件。全面解锁内核级 Netkit 虚拟网卡通道与原生 eBPF 性能，集成 `dae` 与 `daed` 双完全体代理内核，并通过多层白名单机制剔除冗余运行时，实现仅约 **46MB** 的极致轻量体积与低抖动游戏转发。
 
 ---
 
 ## 🌟 核心特性与调优矩阵
 
-* **双内核完全体架构**：同步集成 `dae`（极致轻量文本内核）与 `daed`（现代化图形管理面板），支持在 LuCI 界面热重载与无缝切换[cite: 1, 5]。
-* **Netkit 极速模式点火**：底层彻底移除精简版 `ip-tiny`，换装完整版 `ip-full` 与 `tc-bpf`，打通 Netkit 直连转发，规避传统 veth 模式的性能损耗与高并发瓶颈[cite: 1]。
+* **双内核完全体架构**：同步集成 `dae`（极致轻量文本内核）与 `daed`（现代化图形管理面板），支持在 LuCI 界面热重载与无缝切换。
+* **Netkit 极速模式点火**：底层彻底移除精简版 `ip-tiny`，换装完整版 `ip-full` 与 `tc-bpf`，打通 Netkit 直连转发，规避传统 veth 模式的性能损耗与高并发瓶颈。
 * **电竞级内核深度调优**：
-  * **低延迟抢占调度**：激活 `Preemptible Kernel (Low-Latency Desktop)` 抢占模型，大幅降低网络高负载与复杂规则下的中断抖动[cite: 1]。
-  * **BBR + FQ 发包起搏**：内核默认锁定 BBR 拥塞控制算法与原生 Fair Queue 队列调度，改善弱网出站吞吐与测速跑满能力[cite: 1]。
-  * **XDP 快车道与零拷贝**：启用内核层 `XDP sockets`，打通数据包快速旁路通道[cite: 1]。
-  * **cgroup2 与套接字监控**：启用 `CGROUP_BPF`、`INET_DIAG` 与套接字快速销毁接口，支持精准进程分流与节点秒切[cite: 1]。
-* **BTF 核心说明书**：内置生成 `vmlinux-btf` 二进制字典，支持 eBPF CO-RE 机制在内核中平稳运行[cite: 1]。
-* **纯净白名单防护**：在源码构建期与依赖解析期两次执行白名单过滤，彻底剥离 OpenClash 独立核心（省去 ~27MB 冗余）及 Ruby 等重型运行时，固件维持在 46MB 黄金容量[cite: 5]。
-* **开箱即用调优**：集成针对 512MB 内存核算的高并发网络参数，预装 `luci-theme-aurora` 极简磨砂主题，校准 Asia/Shanghai 时区数据库[cite: 1, 5]。
+  * **低延迟抢占调度**：激活 `Preemptible Kernel (Low-Latency Desktop)` 抢占模型，大幅降低网络高负载与复杂规则下的中断抖动。
+  * **BBR + FQ 发包起搏**：内核默认锁定 BBR 拥塞控制算法与原生 Fair Queue 队列调度，改善弱网出站吞吐与测速跑满能力。
+  * **XDP 快车道与零拷贝**：启用内核层 `XDP sockets`，打通数据包快速旁路通道。
+  * **cgroup2 与套接字监控**：启用 `CGROUP_BPF`、`INET_DIAG` 与套接字快速销毁接口，支持精准进程分流与节点秒切。
+* **BTF 核心说明书**：内置生成 `vmlinux-btf` 二进制字典，支持 eBPF CO-RE 机制在内核中平稳运行。
+* **纯净白名单防护**：在源码构建期与依赖解析期两次执行白名单过滤，彻底剥离 OpenClash 独立核心（省去 ~27MB 冗余）及 Ruby 等重型运行时，固件维持在 46MB 黄金容量。
+* **开箱即用调优**：集成针对 512MB 内存核算的高并发网络参数，预装 `luci-theme-aurora` 极简磨砂主题，校准 Asia/Shanghai 时区数据库。
 
 ---
 
@@ -30,7 +30,7 @@
 
 * **Git Tag 规范**：`vYYYY.MM.DD-HHMM`（标准日期流）
 * **发布版本标题**：`GL-MT3600BE 满血 daede 固件 (YYYY-MM-DD 上午/下午)`
-* **固件文件名**：`daede-YYYYMMDD-上午/下午HHMM.bin`[cite: 5]
+* **固件文件名**：`daede-YYYYMMDD-上午/下午HHMM.bin`
 
 ---
 
@@ -60,17 +60,17 @@
 
 ## 🔍 调优验收与状态校验
 
-刷机成功首次进入系统后，使用 SSH 登录路由器（`ssh root@192.168.1.1`），依次执行以下命令验收各项底层优化是否已生效[cite: 1]：
+刷机成功首次进入系统后，使用 SSH 登录路由器（`ssh root@192.168.1.1`），依次执行以下命令验收各项底层优化是否已生效：
 
-| 验证项目 | 检查命令[cite: 1] | 预期输出[cite: 1] | 状态判定[cite: 1] |
+| 验证项目 | 检查命令 | 预期输出 | 状态判定 |
 | :--- | :--- | :--- | :--- |
-| **Netkit 驱动** | `ip link add dev test-nk type netkit`[cite: 1] | 无报错，直接返回命令提示符[cite: 1] | Netkit 极速模式通道畅通[cite: 1] |
-| **BTF 核心字典** | `ls -lh /sys/kernel/btf/vmlinux`[cite: 1] | 显示文件大小在 3.5MB ~ 5MB 左右[cite: 1] | 内核字典装载成功[cite: 1] |
-| **TCP 拥塞算法** | `sysctl net.ipv4.tcp_congestion_control`[cite: 1] | `= bbr`[cite: 1] | BBR 已接管网络流量[cite: 1] |
-| **队列调度规则** | `sysctl net.core.default_qdisc`[cite: 1] | `= fq`[cite: 1] | 原生 FQ 队列规则生效[cite: 1] |
-| **BPF JIT 状态** | `cat /proc/sys/net/core/bpf_jit_enable`[cite: 1] | `1`[cite: 1] | eBPF 即时编译引擎就绪[cite: 1] |
-| **cgroup2 挂载** | `mount \| grep -E "bpf\|cgroup2"`[cite: 1] | 包含 `type bpf` 与 `type cgroup2`[cite: 1] | 进程级精准分流底层就绪[cite: 1] |
-| **双内核完全体** | `dae -v && daed -v`[cite: 1] | 打印出对应内核版本号[cite: 1] | 双完全体就绪且支持热切换[cite: 1] |
+| **Netkit 驱动** | `ip link add dev test-nk type netkit` | 无报错，直接返回命令提示符 | Netkit 极速模式通道畅通 |
+| **BTF 核心字典** | `ls -lh /sys/kernel/btf/vmlinux` | 显示文件大小在 3.5MB ~ 5MB 左右 | 内核字典装载成功 |
+| **TCP 拥塞算法** | `sysctl net.ipv4.tcp_congestion_control` | `= bbr` | BBR 已接管网络流量 |
+| **队列调度规则** | `sysctl net.core.default_qdisc` | `= fq` | 原生 FQ 队列规则生效 |
+| **BPF JIT 状态** | `cat /proc/sys/net/core/bpf_jit_enable` | `1` | eBPF 即时编译引擎就绪 |
+| **cgroup2 挂载** | `mount \| grep -E "bpf\|cgroup2"` | 包含 `type bpf` 与 `type cgroup2` | 进程级精准分流底层就绪 |
+| **双内核完全体** | `dae -v && daed -v` | 打印出对应内核版本号 | 双完全体就绪且支持热切换 |
 
 *(验收完成后，可运行 `ip link delete dev test-nk` 清理临时测试接口)*
 
@@ -99,7 +99,7 @@
 ## 📄 开源项目引用与致谢
 
 * [OpenWrt Project](https://github.com/openwrt/openwrt)
-* [KaguyaRing/openwrt-custom-gl-mt3600be](https://github.com/KaguyaRing/openwrt-custom-gl-mt3600be)[cite: 6]
-* [kenzok8/openwrt-daede](https://github.com/kenzok8/openwrt-daede)[cite: 1]
-* [eamonxg/luci-theme-aurora](https://github.com/eamonxg/luci-theme-aurora)[cite: 1]
-* [sbwml/packages_lang_golang](https://github.com/sbwml/packages_lang_golang)[cite: 6]
+* [KaguyaRing/openwrt-custom-gl-mt3600be](https://github.com/KaguyaRing/openwrt-custom-gl-mt3600be)
+* [kenzok8/openwrt-daede](https://github.com/kenzok8/openwrt-daede)
+* [eamonxg/luci-theme-aurora](https://github.com/eamonxg/luci-theme-aurora)
+* [sbwml/packages_lang_golang](https://github.com/sbwml/packages_lang_golang)
