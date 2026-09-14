@@ -2,9 +2,47 @@ name: Build GL-MT3600BE daede
 
 on:
   workflow_dispatch:
+  schedule:
+    # 每天早上 08:00 (UTC 00:00) 自动巡检一次上游更新
+    - cron: '0 0 * * *'
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check_upstream.outputs.should_build }}
+      upstream_commit: ${{ steps.check_upstream.outputs.upstream_commit }}
+    steps:
+      - name: 检出当前仓库
+        uses: actions/checkout@v4
+
+      - name: 探测上游 kenzok8/openwrt-daede 最新 Commit
+        id: check_upstream
+        run: |
+          # 1. 获取上游最新 Commit 哈希
+          UPSTREAM_COMMIT=$(git ls-remote https://github.com/kenzok8/openwrt-daede.git HEAD | awk '{print $1}')
+          echo "上游最新 Commit: $UPSTREAM_COMMIT"
+
+          # 2. 读取本地上次记录的 Commit
+          LOCAL_COMMIT=""
+          if [ -f "daede.hash" ]; then
+            LOCAL_COMMIT=$(cat daede.hash | tr -d '[:space:]')
+          fi
+          echo "本地上次 Commit: $LOCAL_COMMIT"
+
+          # 3. 判定是否需要触发编译
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$UPSTREAM_COMMIT" = "$LOCAL_COMMIT" ]; then
+            echo "上游未更新，跳过编译。"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "检测到新版本（或手动触发），准备编译！"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+          echo "upstream_commit=$UPSTREAM_COMMIT" >> $GITHUB_OUTPUT
+
   build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -200,7 +238,17 @@ jobs:
           name: ${{ steps.organize.outputs.release_name }}
           body: |
             ### 固件配置说明
-            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡与 vmlinux-btf 字典）
-            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列
-            * **纯净瘦身**：严格遵循维护指南白名单规范，彻底剔除 OpenClash Core 与冗余运行时，体积缩减至约 46MB
+            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡与 vmlinux-btf 字典）[cite: 1]
+            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列[cite: 1]
+            * **纯净瘦身**：严格遵循维护指南白名单规范，彻底剔除 OpenClash Core 与冗余运行时，体积缩减至约 46MB[cite: 5]
+            * **上游版本**：`kenzok8/openwrt-daede` commit: `${{ needs.check.outputs.upstream_commit }}`
           files: ${{ steps.organize.outputs.firmware_path }}
+
+      - name: 同步记录最新 Commit 哈希到仓库
+        run: |
+          echo "${{ needs.check.outputs.upstream_commit }}" > daede.hash
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add daede.hash
+          git commit -m "chore: sync upstream daede commit ${{ needs.check.outputs.upstream_commit }}" || true
+          git push || true
