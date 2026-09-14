@@ -90,12 +90,15 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a -f
 
+          # 强制补装 LuCI 兼容模块（确保 Aurora 依赖就位）
+          ./scripts/feeds install -p luci -f luci-compat luci-lua-runtime
+
           # 替换 Go 编译器为 1.26+ 分支
           rm -rf feeds/packages/lang/golang
           git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
           ./scripts/feeds install -f -p packages golang
 
-      - name: 注入满血 eBPF、内核原生 BTF 与底层调优
+      - name: 注入满血 eBPF、内核原生 BTF 与事件追踪调优
         run: |
           cd openwrt
           KCONFIGS=$(ls target/linux/mediatek/filogic/config-* 2>/dev/null)
@@ -124,7 +127,7 @@ jobs:
               grep -qF "${cfg}" "$KCONFIG" || echo "${cfg}" >> "$KCONFIG"
             done
 
-            # 4. 强制开启内核原生 BTF 字典生成（生成 /sys/kernel/btf/vmlinux）
+            # 4. 强制开启内核原生 BTF 字典生成
             sed -i 's/CONFIG_DEBUG_INFO_REDUCED=y/# CONFIG_DEBUG_INFO_REDUCED is not set/g' "$KCONFIG"
             sed -i 's/CONFIG_DEBUG_INFO_SPLIT=y/# CONFIG_DEBUG_INFO_SPLIT is not set/g' "$KCONFIG"
             for cfg in "CONFIG_DEBUG_INFO" "CONFIG_DEBUG_INFO_BTF" "CONFIG_BPF_SYSCALL"; do
@@ -132,7 +135,16 @@ jobs:
               grep -qF "${cfg}=y" "$KCONFIG" || echo "${cfg}=y" >> "$KCONFIG"
             done
 
-            # 5. 注入 XDP、Netkit、cgroup eBPF、套接字监控等底层支持
+            # 5. 注入 BPF 事件追踪与探针（消除 bpf_get_current_task 警告）
+            for cfg in \
+              "CONFIG_BPF_EVENTS" "CONFIG_PERF_EVENTS" \
+              "CONFIG_KPROBES" "CONFIG_KPROBE_EVENTS" \
+              "CONFIG_TRACING" "CONFIG_FTRACE" "CONFIG_GENERIC_TRACER" "CONFIG_KALLSYMS_ALL"; do
+              sed -i "s/# ${cfg} is not set//g" "$KCONFIG"
+              grep -qF "${cfg}=y" "$KCONFIG" || echo "${cfg}=y" >> "$KCONFIG"
+            done
+
+            # 6. 注入 XDP、Netkit、cgroup eBPF、套接字监控等底层支持
             for cfg in \
               "CONFIG_XDP_SOCKETS" \
               "CONFIG_IKCONFIG" "CONFIG_IKCONFIG_PROC" \
@@ -193,9 +205,9 @@ jobs:
           # 4. 二次 defconfig：固化纯净配置
           make defconfig
 
-          # 5. 打印最终保留的 LuCI 应用列表
-          echo "=== 最终确认：保留的 LuCI 应用列表 ==="
-          grep "=y" .config | grep "^CONFIG_PACKAGE_luci-app-"
+          # 5. 打印保留的 LuCI 与主题配置（便于在 Actions 日志直接核验）
+          echo "=== 最终确认：保留的 LuCI 应用与主题 ==="
+          grep "=y" .config | grep -E "CONFIG_PACKAGE_luci-(app|theme|compat|lua)"
 
       - name: 预下载源码依赖
         run: |
@@ -214,14 +226,9 @@ jobs:
           FIRMWARE=$(ls *gl-mt3600be-squashfs-sysupgrade.bin | head -n 1)
           export TZ='Asia/Shanghai'
           
-          # 1. Git Tag：标准日期流
           TAG_NAME="v$(date +%Y.%m.%d-%H%M)"
-          
-          # 2. Release Title：折中方案（中文友好展示）
           [ $(date +%H) -lt 12 ] && AP="上午" || AP="下午"
           RELEASE_NAME="GL-MT3600BE 满血 daede 固件 ($(date +%Y-%m-%d) ${AP})"
-          
-          # 3. 固件文件下载名：折中方案（保留 12 小时制标识）
           FILE_NAME="daede-$(date +%Y%m%d)-${AP}$(date +%I%M).bin"
           mv "$FIRMWARE" "$FILE_NAME"
           
@@ -244,10 +251,10 @@ jobs:
           name: ${{ steps.organize.outputs.release_name }}
           body: |
             ### 固件配置说明
-            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡通道）[cite: 1]
-            * **内核 BTF**：原生内置 `/sys/kernel/btf/vmlinux` 核心字典，免除独立包依赖
-            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列[cite: 1]
-            * **主题界面**：集成 Aurora 极简主题及配套中文配置面板，默认 Asia/Shanghai 时区[cite: 1]
+            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡通道）
+            * **内核 BTF**：原生内置 `/sys/kernel/btf/vmlinux` 核心字典与 BPF 事件追踪
+            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列
+            * **主题界面**：集成 Aurora 极简主题及配套中文配置面板，默认 Asia/Shanghai 时区
             * **纯净瘦身**：彻底剔除 AdGuardHome 与 OpenClash，体积精确回归 ~46MB 黄金水平
             * **上游版本**：`kenzok8/openwrt-daede` commit: `${{ needs.check.outputs.upstream_commit }}`
           files: ${{ steps.organize.outputs.firmware_path }}
