@@ -74,34 +74,38 @@ jobs:
           git clone --depth 1 https://github.com/KaguyaRing/openwrt-custom-gl-mt3600be.git openwrt
           cd openwrt
           
-          # 剔除旧版 daed_repo，注入全新独立包
+          # 1. 剔除旧版 daed_repo，拉取全新独立包
           sed -i '/daed_repo/d' feeds.conf.default 2>/dev/null || true
           git clone --depth 1 https://github.com/kenzok8/openwrt-daede.git package/openwrt-daede
 
-          # 源头拦截：彻底清除底包内预置的 OpenClash 与 AdGuardHome 源码目录
+          # 2. 源头拦截：彻底清除底包内预置的 OpenClash 与 AdGuardHome 源码
           rm -rf package/*openclash* feeds/*/*openclash* package/*adguardhome* feeds/*/*adguardhome* 2>/dev/null || true
           sed -i '/openclash/d' feeds.conf.default 2>/dev/null || true
           
-          # 卸载冲突包并更新 Feeds
+          # 3. 卸载冲突包并更新 Feeds
           ./scripts/feeds uninstall luci-app-daede daed dae adguardhome luci-app-adguardhome 2>/dev/null || true
           ./scripts/feeds update -a
 
-          # 关键修复：将 Aurora 注入到 feeds/luci 标准层级（彻底打通 ../../luci.mk 相对依赖）
-          rm -rf feeds/luci/themes/luci-theme-aurora feeds/luci/applications/luci-app-aurora-config
-          git clone --depth 1 https://github.com/eamonxg/luci-theme-aurora.git feeds/luci/themes/luci-theme-aurora
-          git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git feeds/luci/applications/luci-app-aurora-config
-
-          # 物理抹除 Bootstrap 源码，并将 LuCI 集合默认主题依赖替换为 Aurora
+          # 4. 彻底抹除 Bootstrap 源码，让全系统彻底失去 Bootstrap 痕迹
           rm -rf feeds/luci/themes/luci-theme-bootstrap
           find feeds/luci/collections/ -name "Makefile" -exec sed -i 's/luci-theme-bootstrap/luci-theme-aurora/g' {} + 2>/dev/null || true
 
-          # 重新安装并索引所有 Feeds
+          # 5. 安装基础 feeds 依赖
           ./scripts/feeds install -a -f
+          ./scripts/feeds install -p luci -f luci-compat luci-lua-runtime
 
-          # 强制补齐 LuCI 兼容运行时与 Aurora 安装
-          ./scripts/feeds install -p luci -f luci-compat luci-lua-runtime luci-theme-aurora luci-app-aurora-config
+          # 6. 核心修复：直接克隆到 package/ 目录，并打通 ../../luci.mk 相对路径软链接
+          rm -rf package/luci-theme-aurora package/luci-app-aurora-config
+          git clone --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
+          git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git package/luci-app-aurora-config
+          
+          # 在根目录与 package 目录架设 luci.mk 软链接桥，彻底消除 Makefile 解析失败
+          ln -sf $(pwd)/feeds/luci/luci.mk $(pwd)/luci.mk
+          ln -sf $(pwd)/feeds/luci/luci.mk $(pwd)/package/luci.mk
+          sed -i 's|\.\./\.\./luci\.mk|\$(TOPDIR)/feeds/luci/luci.mk|g' package/luci-theme-aurora/Makefile 2>/dev/null || true
+          sed -i 's|\.\./\.\./luci\.mk|\$(TOPDIR)/feeds/luci/luci.mk|g' package/luci-app-aurora-config/Makefile 2>/dev/null || true
 
-          # 替换 Go 编译器为 1.26+ 分支
+          # 7. 替换 Go 编译器为 1.26+ 分支
           rm -rf feeds/packages/lang/golang
           git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
           ./scripts/feeds install -f -p packages golang
