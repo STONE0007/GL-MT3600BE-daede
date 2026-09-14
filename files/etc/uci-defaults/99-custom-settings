@@ -1,8 +1,24 @@
-#!/sh
+#!/bin/sh
+
+# 1. 锁定 Aurora 磨砂主题与简体中文
+uci set luci.main.mediaurlbase='/luci-static/aurora'
+uci set luci.main.lang='zh_cn'
+uci commit luci
+
+# 2. 设置时区为亚洲上海（CST-8）
 uci set system.@system[0].timezone='CST-8'
 uci set system.@system[0].zonename='Asia/Shanghai'
-uci set firewall.@defaults[0].flow_offloading='1'
-uci set firewall.@defaults[0].flow_offloading_hw='1'
+uci delete system.@system[0].ntp_server 2>/dev/null || true
+uci add_list system.@system[0].ntp_server='ntp.aliyun.com'
+uci add_list system.@system[0].ntp_server='time1.cloud.tencent.com'
 uci commit system
+
+# 3. 必须彻底关闭硬件/软件流加速（确保 eBPF / Netkit 完整捕获所有流量，严防断流漏包）
+uci set firewall.@defaults[0].flow_offloading='0'
+uci set firewall.@defaults[0].flow_offloading_hw='0'
 uci commit firewall
+
+# 4. 清理 LuCI 界面缓存，确保开机即生效
+rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
+
 exit 0
