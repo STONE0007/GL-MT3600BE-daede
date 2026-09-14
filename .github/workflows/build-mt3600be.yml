@@ -3,7 +3,6 @@ name: Build GL-MT3600BE daede
 on:
   workflow_dispatch:
   schedule:
-    # 每天早上 08:00 (UTC 00:00) 自动巡检一次上游更新
     - cron: '0 0 * * *'
 
 jobs:
@@ -19,18 +18,15 @@ jobs:
       - name: 探测上游 kenzok8/openwrt-daede 最新 Commit
         id: check_upstream
         run: |
-          # 1. 获取上游最新 Commit 哈希
           UPSTREAM_COMMIT=$(git ls-remote https://github.com/kenzok8/openwrt-daede.git HEAD | awk '{print $1}')
           echo "上游最新 Commit: $UPSTREAM_COMMIT"
 
-          # 2. 读取本地上次记录的 Commit
           LOCAL_COMMIT=""
           if [ -f "daede.hash" ]; then
             LOCAL_COMMIT=$(cat daede.hash | tr -d '[:space:]')
           fi
           echo "本地上次 Commit: $LOCAL_COMMIT"
 
-          # 3. 判定是否需要触发编译
           if [ "${{ github.event_name }}" = "schedule" ] && [ "$UPSTREAM_COMMIT" = "$LOCAL_COMMIT" ]; then
             echo "上游未更新，跳过编译。"
             echo "should_build=false" >> $GITHUB_OUTPUT
@@ -77,11 +73,11 @@ jobs:
           git clone --depth 1 https://github.com/KaguyaRing/openwrt-custom-gl-mt3600be.git openwrt
           cd openwrt
           
-          # 彻底剔除旧版 daed_repo，注入全新独立包与 Aurora 主题
+          # 剔除旧版 daed_repo，注入全新独立包与 Aurora 主题主分支
           sed -i '/daed_repo/d' feeds.conf.default 2>/dev/null || true
           git clone --depth 1 https://github.com/kenzok8/openwrt-daede.git package/openwrt-daede
           rm -rf package/luci-theme-aurora package/luci-app-aurora-config
-          git clone -b v0.10.0 --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
+          git clone --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
           git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git package/luci-app-aurora-config
 
           # 源头拦截：彻底清除底包内预置的 OpenClash 及其核心
@@ -98,7 +94,7 @@ jobs:
           git clone --depth 1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
           ./scripts/feeds install -f -p packages golang
 
-      - name: 注入第六步满血 eBPF 与底层内核优化
+      - name: 注入满血 eBPF、内核原生 BTF 与底层调优
         run: |
           cd openwrt
           KCONFIGS=$(ls target/linux/mediatek/filogic/config-* 2>/dev/null)
@@ -127,13 +123,21 @@ jobs:
               grep -qF "${cfg}" "$KCONFIG" || echo "${cfg}" >> "$KCONFIG"
             done
 
-            # 4. 注入 XDP、Netkit、cgroup eBPF、套接字监控等底层支持
+            # 4. 强制开启内核原生 BTF 字典生成（生成 /sys/kernel/btf/vmlinux 必备）
+            sed -i 's/CONFIG_DEBUG_INFO_REDUCED=y/# CONFIG_DEBUG_INFO_REDUCED is not set/g' "$KCONFIG"
+            sed -i 's/CONFIG_DEBUG_INFO_SPLIT=y/# CONFIG_DEBUG_INFO_SPLIT is not set/g' "$KCONFIG"
+            for cfg in "CONFIG_DEBUG_INFO" "CONFIG_DEBUG_INFO_BTF" "CONFIG_BPF_SYSCALL"; do
+              sed -i "s/# ${cfg} is not set//g" "$KCONFIG"
+              grep -qF "${cfg}=y" "$KCONFIG" || echo "${cfg}=y" >> "$KCONFIG"
+            done
+
+            # 5. 注入 XDP、Netkit、cgroup eBPF、套接字监控等底层支持
             for cfg in \
               "CONFIG_XDP_SOCKETS" \
               "CONFIG_IKCONFIG" "CONFIG_IKCONFIG_PROC" \
               "CONFIG_CGROUPS" "CONFIG_CGROUP_CPUACCT" "CONFIG_CGROUP_BPF" "CONFIG_SOCK_CGROUP_DATA" \
               "CONFIG_INET_DIAG" "CONFIG_INET_UDP_DIAG" "CONFIG_INET_DIAG_DESTROY" \
-              "CONFIG_NETKIT" "CONFIG_DEBUG_INFO_BTF" \
+              "CONFIG_NETKIT" \
               "CONFIG_NET_ACT_BPF" "CONFIG_NET_CLS_BPF" "CONFIG_NET_CLS_ACT" \
               "CONFIG_NF_CONNTRACK_MARK" "CONFIG_NFT_TPROXY" "CONFIG_NFT_SOCKET" "CONFIG_NFT_FIB"; do
               sed -i "s/# ${cfg} is not set//g" "$KCONFIG"
@@ -167,8 +171,8 @@ jobs:
               echo "# ${pkg} is not set" >> .config
           done
 
-          # 强制剔除重型二进制与语言运行时 (OpenClash 核心与 Ruby)
-          for extra_pkg in "CONFIG_PACKAGE_ruby" "CONFIG_PACKAGE_openclash-core" "CONFIG_PACKAGE_luci-app-openclash"; do
+          # 强制剔除重型二进制与独立字典包
+          for extra_pkg in "CONFIG_PACKAGE_ruby" "CONFIG_PACKAGE_openclash-core" "CONFIG_PACKAGE_luci-app-openclash" "CONFIG_PACKAGE_vmlinux-btf"; do
               if grep -q "${extra_pkg}=y" .config; then
                   REMOVED_PLUGINS+=("$extra_pkg")
                   sed -i "/${extra_pkg}/d" .config
@@ -230,6 +234,7 @@ jobs:
         with:
           name: ${{ steps.organize.outputs.firmware_name }}
           path: ${{ steps.organize.outputs.firmware_path }}
+          retention-days: 3
 
       - name: 自动发布固件至 GitHub Releases
         uses: softprops/action-gh-release@v2
@@ -238,9 +243,11 @@ jobs:
           name: ${{ steps.organize.outputs.release_name }}
           body: |
             ### 固件配置说明
-            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡与 vmlinux-btf 字典）[cite: 1]
-            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列[cite: 1]
-            * **纯净瘦身**：严格遵循维护指南白名单规范，彻底剔除 OpenClash Core 与冗余运行时，体积缩减至约 46MB[cite: 5]
+            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡通道）
+            * **内核 BTF**：原生内置 `/sys/kernel/btf/vmlinux` 核心字典，免除独立包依赖
+            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列
+            * **主题界面**：集成 Aurora 极简主题及配套中文配置面板，默认 Asia/Shanghai 时区[cite: 1]
+            * **纯净瘦身**：剔除 OpenClash Core 与冗余运行时，体积维持轻量
             * **上游版本**：`kenzok8/openwrt-daede` commit: `${{ needs.check.outputs.upstream_commit }}`
           files: ${{ steps.organize.outputs.firmware_path }}
 
