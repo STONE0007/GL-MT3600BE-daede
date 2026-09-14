@@ -88,11 +88,10 @@
 
 如果该固件在 Wi-Fi 7 跑满带宽、降低游戏延迟或提升网络稳定性方面对你有所帮助，欢迎支持持续维护：
 
-| 微信赞赏 | 支付宝赞赏 |
-| :---: | :---: |
-| <img src="assets/wechat.png" width="180" alt="微信赞赏码"/> | <img src="assets/alipay.png" width="180" alt="支付宝赞赏码"/> |
+| 微信赞赏 |
+| :---: |
+| <img src="assets/wechat.png" width="180" alt="微信赞赏码"/>
 
-> *注：请将赞赏码图片上传至仓库 `assets/` 目录，并确认命名为 `wechat.png` 和 `alipay.png`。*
 
 ---
 
