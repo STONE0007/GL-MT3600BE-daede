@@ -90,7 +90,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a -f
 
-          # 强制补装 LuCI 兼容模块（确保 Aurora 依赖就位）
+          # 强制补齐 LuCI 兼容运行时支撑
           ./scripts/feeds install -p luci -f luci-compat luci-lua-runtime
 
           # 替换 Go 编译器为 1.26+ 分支
@@ -184,8 +184,8 @@ jobs:
               echo "# ${pkg} is not set" >> .config
           done
 
-          # 3. 强制剔除所有重型二进制、独立字典包与 AdGuardHome
-          for extra_pkg in "CONFIG_PACKAGE_ruby" "CONFIG_PACKAGE_openclash-core" "CONFIG_PACKAGE_luci-app-openclash" "CONFIG_PACKAGE_vmlinux-btf" "CONFIG_PACKAGE_adguardhome" "CONFIG_PACKAGE_luci-app-adguardhome"; do
+          # 3. 强制剔除重型组件并彻底封杀 Bootstrap 主题
+          for extra_pkg in "CONFIG_PACKAGE_ruby" "CONFIG_PACKAGE_openclash-core" "CONFIG_PACKAGE_luci-app-openclash" "CONFIG_PACKAGE_vmlinux-btf" "CONFIG_PACKAGE_adguardhome" "CONFIG_PACKAGE_luci-app-adguardhome" "CONFIG_PACKAGE_luci-theme-bootstrap"; do
               if grep -q "${extra_pkg}=y" .config; then
                   REMOVED_PLUGINS+=("$extra_pkg")
                   sed -i "/${extra_pkg}/d" .config
@@ -202,10 +202,20 @@ jobs:
               echo "✨ 未发现多余第三方插件，配置保持纯净！"
           fi
 
-          # 4. 二次 defconfig：固化纯净配置
+          # 4. 写入开机脚本：固化默认主题为 Aurora
+          mkdir -p files/etc/uci-defaults
+          cat << 'EOF' > files/etc/uci-defaults/99-default-theme
+#!/bin/sh
+uci set luci.main.mediaurlbase='/luci-static/aurora'
+uci commit luci
+exit 0
+EOF
+          chmod +x files/etc/uci-defaults/99-default-theme
+
+          # 5. 二次 defconfig：固化纯净配置
           make defconfig
 
-          # 5. 打印保留的 LuCI 与主题配置（便于在 Actions 日志直接核验）
+          # 6. 打印确认保留的应用与主题
           echo "=== 最终确认：保留的 LuCI 应用与主题 ==="
           grep "=y" .config | grep -E "CONFIG_PACKAGE_luci-(app|theme|compat|lua)"
 
@@ -251,11 +261,11 @@ jobs:
           name: ${{ steps.organize.outputs.release_name }}
           body: |
             ### 固件配置说明
-            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡通道）
+            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡通道）[cite: 1]
             * **内核 BTF**：原生内置 `/sys/kernel/btf/vmlinux` 核心字典与 BPF 事件追踪
-            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列
-            * **主题界面**：集成 Aurora 极简主题及配套中文配置面板，默认 Asia/Shanghai 时区
-            * **纯净瘦身**：彻底剔除 AdGuardHome 与 OpenClash，体积精确回归 ~46MB 黄金水平
+            * **视觉界面**：独占集成 Aurora 磨砂极简主题及配套中文设置面板，彻底剥除 Bootstrap
+            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列[cite: 1]
+            * **纯净瘦身**：彻底剔除 AdGuardHome 与 OpenClash，体积维持在 ~46MB 黄金容量
             * **上游版本**：`kenzok8/openwrt-daede` commit: `${{ needs.check.outputs.upstream_commit }}`
           files: ${{ steps.organize.outputs.firmware_path }}
 
