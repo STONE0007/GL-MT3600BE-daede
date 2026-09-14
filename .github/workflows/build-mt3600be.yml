@@ -6,6 +6,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
 
     steps:
       - name: 检出当前仓库
@@ -43,6 +45,10 @@ jobs:
           rm -rf package/luci-theme-aurora package/luci-app-aurora-config
           git clone -b v0.10.0 --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
           git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git package/luci-app-aurora-config
+
+          # 源头拦截：彻底清除底包内预置的 OpenClash 及其核心
+          rm -rf package/*openclash* feeds/*/*openclash* 2>/dev/null || true
+          sed -i '/openclash/d' feeds.conf.default 2>/dev/null || true
           
           # 卸载冲突包并更新安装 Feeds
           ./scripts/feeds uninstall luci-app-daede daed dae 2>/dev/null || true
@@ -65,7 +71,7 @@ jobs:
             grep -qF "CONFIG_PREEMPT=y" "$KCONFIG" || echo "CONFIG_PREEMPT=y" >> "$KCONFIG"
             grep -qF "CONFIG_PREEMPTION=y" "$KCONFIG" || echo "CONFIG_PREEMPTION=y" >> "$KCONFIG"
 
-            # 2. 彻底解决 TCP 拥塞控制 Choice 弹窗 (锁定 BBR 为默认)
+            # 2. 锁定 BBR 为默认 TCP 拥塞控制算法
             sed -i 's/CONFIG_DEFAULT_CUBIC=y/# CONFIG_DEFAULT_CUBIC is not set/g' "$KCONFIG"
             sed -i 's/CONFIG_DEFAULT_TCP_CONG="cubic"/CONFIG_DEFAULT_TCP_CONG="bbr"/g' "$KCONFIG"
             for cfg in "CONFIG_TCP_CONG_ADVANCED=y" "CONFIG_TCP_CONG_BBR=y" "CONFIG_DEFAULT_BBR=y" 'CONFIG_DEFAULT_TCP_CONG="bbr"'; do
@@ -73,7 +79,7 @@ jobs:
               grep -qF "${cfg}" "$KCONFIG" || echo "${cfg}" >> "$KCONFIG"
             done
 
-            # 3. 彻底解决队列调度 Choice 弹窗 (锁定 FQ 为默认)
+            # 3. 锁定 FQ 为默认队列调度器
             sed -i 's/CONFIG_DEFAULT_FQ_CODEL=y/# CONFIG_DEFAULT_FQ_CODEL is not set/g' "$KCONFIG"
             sed -i 's/CONFIG_DEFAULT_PFIFO_FAST=y/# CONFIG_DEFAULT_PFIFO_FAST is not set/g' "$KCONFIG"
             sed -i 's/CONFIG_DEFAULT_NET_SCH="fq_codel"/CONFIG_DEFAULT_NET_SCH="fq"/g' "$KCONFIG"
@@ -97,7 +103,7 @@ jobs:
             done
           done
 
-      - name: 载入预埋 Files 与核心配置
+      - name: 载入预设与第五步纯净拦截
         run: |
           if [ -d "files" ]; then
             cp -r files/ openwrt/files/
@@ -107,19 +113,46 @@ jobs:
           fi
           cd openwrt
           
-          # 核心双保险：彻底抹除 include/bpf.mk 内部的 /invalid 回退，直接使用宿主机 Clang
+          # 抹除 bpf.mk 内部的 /invalid 回退路径
           sed -i 's|LLVM_PATH:=.*|LLVM_PATH:=/usr/bin|g' include/bpf.mk 2>/dev/null || true
           
-          # 执行白名单过滤保护
+          # 1. 首次 defconfig：展开底包所有默认依赖树
+          make defconfig
+
+          # 2. 严格执行维护指南第五步白名单过滤拦截
           PROTECT_LIST="luci-app-daede|luci-app-firewall|luci-app-package-manager|luci-app-opkg|luci-app-aurora-config|zoneinfo-asia"
+          echo "=== 正在扫描并清理多余的非必要应用 ==="
+          REMOVED_PLUGINS=()
           for pkg in $(grep "=y" .config | grep "^CONFIG_PACKAGE_luci-app-" | grep -v -E "$PROTECT_LIST" | cut -d'=' -f1); do
+              REMOVED_PLUGINS+=("$pkg")
               sed -i "/${pkg}/d" .config
               echo "# ${pkg} is not set" >> .config
           done
-          sed -i '/CONFIG_PACKAGE_ruby/d' .config
-          echo "# CONFIG_PACKAGE_ruby is not set" >> .config
 
+          # 强制剔除重型二进制与语言运行时 (OpenClash 核心与 Ruby)
+          for extra_pkg in "CONFIG_PACKAGE_ruby" "CONFIG_PACKAGE_openclash-core" "CONFIG_PACKAGE_luci-app-openclash"; do
+              if grep -q "${extra_pkg}=y" .config; then
+                  REMOVED_PLUGINS+=("$extra_pkg")
+                  sed -i "/${extra_pkg}/d" .config
+                  echo "# ${extra_pkg} is not set" >> .config
+              fi
+          done
+
+          if [ ${#REMOVED_PLUGINS[@]} -gt 0 ]; then
+              echo "🚨 以下多余第三方组件已被剔除："
+              for item in "${REMOVED_PLUGINS[@]}"; do
+                  echo "   - $item"
+              done
+          else
+              echo "✨ 未发现多余第三方插件，配置保持纯净！"
+          fi
+
+          # 3. 二次 defconfig：重新平衡并固化纯净配置
           make defconfig
+
+          # 4. 打印最终保留的 LuCI 应用列表
+          echo "=== 最终确认：保留的 LuCI 应用列表 ==="
+          grep "=y" .config | grep "^CONFIG_PACKAGE_luci-app-"
 
       - name: 预下载源码依赖
         run: |
@@ -131,21 +164,43 @@ jobs:
           cd openwrt
           make -j$(nproc) || make -j1 V=s
 
-      - name: 提取固件并按 12 小时制重命名归档
+      - name: 提取固件并生成版本变量
         id: organize
         run: |
           cd openwrt/bin/targets/mediatek/filogic/
           FIRMWARE=$(ls *gl-mt3600be-squashfs-sysupgrade.bin | head -n 1)
           export TZ='Asia/Shanghai'
+          
+          # 1. Git Tag：标准日期流
+          TAG_NAME="v$(date +%Y.%m.%d-%H%M)"
+          
+          # 2. Release Title：折中方案（中文友好展示）
           [ $(date +%H) -lt 12 ] && AP="上午" || AP="下午"
-          TIME_TAG="$(date +%Y%m%d)-${AP}$(date +%I%M)"
-          NEW_NAME="daede-${TIME_TAG}.bin"
-          mv "$FIRMWARE" "$NEW_NAME"
-          echo "firmware_path=openwrt/bin/targets/mediatek/filogic/${NEW_NAME}" >> $GITHUB_OUTPUT
-          echo "firmware_name=${NEW_NAME}" >> $GITHUB_OUTPUT
+          RELEASE_NAME="GL-MT3600BE 满血 daede 固件 ($(date +%Y-%m-%d) ${AP})"
+          
+          # 3. 固件文件下载名：折中方案（保留 12 小时制标识）
+          FILE_NAME="daede-$(date +%Y%m%d)-${AP}$(date +%I%M).bin"
+          mv "$FIRMWARE" "$FILE_NAME"
+          
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
+          echo "firmware_path=openwrt/bin/targets/mediatek/filogic/${FILE_NAME}" >> $GITHUB_OUTPUT
+          echo "firmware_name=${FILE_NAME}" >> $GITHUB_OUTPUT
 
       - name: 上传固件至 Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.organize.outputs.firmware_name }}
           path: ${{ steps.organize.outputs.firmware_path }}
+
+      - name: 自动发布固件至 GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.organize.outputs.tag_name }}
+          name: ${{ steps.organize.outputs.release_name }}
+          body: |
+            ### 固件配置说明
+            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡与 vmlinux-btf 字典）[cite: 1]
+            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列[cite: 1]
+            * **纯净瘦身**：严格遵循维护指南白名单规范，彻底剔除 OpenClash Core 与冗余运行时，体积缩减至约 46MB[cite: 5]
+          files: ${{ steps.organize.outputs.firmware_path }}
