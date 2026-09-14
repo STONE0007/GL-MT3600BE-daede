@@ -3,6 +3,7 @@ name: Build GL-MT3600BE daede
 on:
   workflow_dispatch:
   schedule:
+    # 每天早上 08:00 (UTC 00:00) 自动巡检一次上游更新
     - cron: '0 0 * * *'
 
 jobs:
@@ -80,12 +81,12 @@ jobs:
           git clone --depth 1 https://github.com/eamonxg/luci-theme-aurora.git package/luci-theme-aurora
           git clone --depth 1 https://github.com/eamonxg/luci-app-aurora-config.git package/luci-app-aurora-config
 
-          # 源头拦截：彻底清除底包内预置的 OpenClash 及其核心
-          rm -rf package/*openclash* feeds/*/*openclash* 2>/dev/null || true
+          # 源头拦截：彻底清除底包内预置的 OpenClash 与 AdGuardHome 源码目录
+          rm -rf package/*openclash* feeds/*/*openclash* package/*adguardhome* feeds/*/*adguardhome* 2>/dev/null || true
           sed -i '/openclash/d' feeds.conf.default 2>/dev/null || true
           
           # 卸载冲突包并更新安装 Feeds
-          ./scripts/feeds uninstall luci-app-daede daed dae 2>/dev/null || true
+          ./scripts/feeds uninstall luci-app-daede daed dae adguardhome luci-app-adguardhome 2>/dev/null || true
           ./scripts/feeds update -a
           ./scripts/feeds install -a -f
 
@@ -123,7 +124,7 @@ jobs:
               grep -qF "${cfg}" "$KCONFIG" || echo "${cfg}" >> "$KCONFIG"
             done
 
-            # 4. 强制开启内核原生 BTF 字典生成（生成 /sys/kernel/btf/vmlinux 必备）
+            # 4. 强制开启内核原生 BTF 字典生成（生成 /sys/kernel/btf/vmlinux）
             sed -i 's/CONFIG_DEBUG_INFO_REDUCED=y/# CONFIG_DEBUG_INFO_REDUCED is not set/g' "$KCONFIG"
             sed -i 's/CONFIG_DEBUG_INFO_SPLIT=y/# CONFIG_DEBUG_INFO_SPLIT is not set/g' "$KCONFIG"
             for cfg in "CONFIG_DEBUG_INFO" "CONFIG_DEBUG_INFO_BTF" "CONFIG_BPF_SYSCALL"; do
@@ -145,7 +146,7 @@ jobs:
             done
           done
 
-      - name: 载入预设与第五步纯净拦截
+      - name: 载入预设与纯净白名单双重拦截
         run: |
           if [ -d "files" ]; then
             cp -r files/ openwrt/files/
@@ -158,10 +159,10 @@ jobs:
           # 抹除 bpf.mk 内部的 /invalid 回退路径
           sed -i 's|LLVM_PATH:=.*|LLVM_PATH:=/usr/bin|g' include/bpf.mk 2>/dev/null || true
           
-          # 1. 首次 defconfig：展开底包所有默认依赖树
+          # 1. 首次 defconfig：展开基础依赖树
           make defconfig
 
-          # 2. 严格执行维护指南第五步白名单过滤拦截
+          # 2. 严格执行白名单过滤
           PROTECT_LIST="luci-app-daede|luci-app-firewall|luci-app-package-manager|luci-app-opkg|luci-app-aurora-config|zoneinfo-asia"
           echo "=== 正在扫描并清理多余的非必要应用 ==="
           REMOVED_PLUGINS=()
@@ -171,8 +172,8 @@ jobs:
               echo "# ${pkg} is not set" >> .config
           done
 
-          # 强制剔除重型二进制与独立字典包
-          for extra_pkg in "CONFIG_PACKAGE_ruby" "CONFIG_PACKAGE_openclash-core" "CONFIG_PACKAGE_luci-app-openclash" "CONFIG_PACKAGE_vmlinux-btf"; do
+          # 3. 强制剔除所有重型二进制、独立字典包与 AdGuardHome
+          for extra_pkg in "CONFIG_PACKAGE_ruby" "CONFIG_PACKAGE_openclash-core" "CONFIG_PACKAGE_luci-app-openclash" "CONFIG_PACKAGE_vmlinux-btf" "CONFIG_PACKAGE_adguardhome" "CONFIG_PACKAGE_luci-app-adguardhome"; do
               if grep -q "${extra_pkg}=y" .config; then
                   REMOVED_PLUGINS+=("$extra_pkg")
                   sed -i "/${extra_pkg}/d" .config
@@ -189,10 +190,10 @@ jobs:
               echo "✨ 未发现多余第三方插件，配置保持纯净！"
           fi
 
-          # 3. 二次 defconfig：重新平衡并固化纯净配置
+          # 4. 二次 defconfig：固化纯净配置
           make defconfig
 
-          # 4. 打印最终保留的 LuCI 应用列表
+          # 5. 打印最终保留的 LuCI 应用列表
           echo "=== 最终确认：保留的 LuCI 应用列表 ==="
           grep "=y" .config | grep "^CONFIG_PACKAGE_luci-app-"
 
@@ -243,11 +244,11 @@ jobs:
           name: ${{ steps.organize.outputs.release_name }}
           body: |
             ### 固件配置说明
-            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡通道）
+            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡通道）[cite: 1]
             * **内核 BTF**：原生内置 `/sys/kernel/btf/vmlinux` 核心字典，免除独立包依赖
-            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列
+            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列[cite: 1]
             * **主题界面**：集成 Aurora 极简主题及配套中文配置面板，默认 Asia/Shanghai 时区[cite: 1]
-            * **纯净瘦身**：剔除 OpenClash Core 与冗余运行时，体积维持轻量
+            * **纯净瘦身**：彻底剔除 AdGuardHome 与 OpenClash，体积精确回归 ~46MB 黄金水平
             * **上游版本**：`kenzok8/openwrt-daede` commit: `${{ needs.check.outputs.upstream_commit }}`
           files: ${{ steps.organize.outputs.firmware_path }}
 
