@@ -13,12 +13,12 @@ uci add_list system.@system[0].ntp_server='ntp.aliyun.com'
 uci add_list system.@system[0].ntp_server='time1.cloud.tencent.com'
 uci commit system
 
-# 3. 必须彻底关闭硬件/软件流加速（确保 eBPF / Netkit 完整捕获所有流量，严防断流漏包）
+# 3. 必须彻底关闭硬件/软件流加速（确保 eBPF / Netkit 完整接管数据流量）
 uci set firewall.@defaults[0].flow_offloading='0'
 uci set firewall.@defaults[0].flow_offloading_hw='0'
 uci commit firewall
 
-# 4. 清理 LuCI 界面缓存，确保开机即生效
+# 4. 清理 LuCI 界面缓存
 rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 
 exit 0
