@@ -200,7 +200,7 @@ jobs:
           name: ${{ steps.organize.outputs.release_name }}
           body: |
             ### 固件配置说明
-            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡与 vmlinux-btf 字典）[cite: 1]
-            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列[cite: 1]
-            * **纯净瘦身**：严格遵循维护指南白名单规范，彻底剔除 OpenClash Core 与冗余运行时，体积缩减至约 46MB[cite: 5]
+            * **核心内核**：集成 dae + daed 双完全体（支持 Netkit 虚拟网卡与 vmlinux-btf 字典）
+            * **底层调优**：开启 XDP 快车道、桌面低延迟抢占模型（Preemptible）、BBR + FQ 拥塞队列
+            * **纯净瘦身**：严格遵循维护指南白名单规范，彻底剔除 OpenClash Core 与冗余运行时，体积缩减至约 46MB
           files: ${{ steps.organize.outputs.firmware_path }}
