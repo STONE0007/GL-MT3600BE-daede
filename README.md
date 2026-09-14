@@ -80,7 +80,7 @@
 
 欢迎加入讨论群组，交流 Filogic 880 平台编译技巧、分流路由规则与电竞网络加速方案：
 
-[![Telegram Group]([https://img.shields.io/badge/Telegram-加入交流群组-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white](https://t.me/+dhWTFwL8QpRiMzI9)
+[![Telegram Group](https://img.shields.io/badge/Telegram-加入交流群组-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/+dhWTFwL8QpRiMzI9)
 
 ---
 
