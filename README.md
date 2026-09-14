@@ -3,7 +3,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/STONE0007/GL-MT3600BE-daede/build-mt3600be.yml?branch=main&style=flat-square&label=Build%20Status)](https://github.com/STONE0007/GL-MT3600BE-daede/actions)
 [![Latest Release](https://img.shields.io/github/v/release/STONE0007/GL-MT3600BE-daede?style=flat-square&color=blue&label=Release)](https://github.com/STONE0007/GL-MT3600BE-daede/releases)
 [![Telegram Group](https://img.shields.io/badge/Telegram-交流讨论群-2CA5E0?style=flat-square&logo=telegram&logoColor=white)](https://t.me/你的TG群组链接)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-green.flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0-green?style=flat-square)](LICENSE)
 
 专为 **GL.iNet GL-MT3600BE**（MediaTek Filogic 820/880 平台）深度打造的电竞级优化 OpenWrt 固件。全面解锁内核级 Netkit 虚拟网卡通道与原生 eBPF 性能，集成 `dae` 与 `daed` 双完全体代理内核，并通过多层白名单机制剔除冗余运行时，实现仅约 **46MB** 的极致轻量体积与低抖动游戏转发。
 
