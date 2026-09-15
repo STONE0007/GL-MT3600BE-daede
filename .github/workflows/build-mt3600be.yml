@@ -1,4 +1,4 @@
-name: Build GL-MT3600BE daede
+name: Build 大脚板 daede
 
 on:
   workflow_dispatch:
