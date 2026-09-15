@@ -1,4 +1,4 @@
-# GL-MT3600BE 满血 daede 双内核极速固件
+双内核极速固件
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/STONE0007/GL-MT3600BE-daede/build-mt3600be.yml?branch=main&style=flat-square&label=Build%20Status)](https://github.com/STONE0007/GL-MT3600BE-daede/actions)
 [![Latest Release](https://img.shields.io/github/v/release/STONE0007/GL-MT3600BE-daede?style=flat-square&color=blue&label=Release)](https://github.com/STONE0007/GL-MT3600BE-daede/releases)
